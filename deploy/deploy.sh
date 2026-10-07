@@ -39,9 +39,12 @@ rsync -az --delete --delete-excluded \
 
 echo "==> verify"
 curl -fsS -o /dev/null -w 'https://play.langerock.xyz/ -> %{http_code}\n' https://play.langerock.xyz/
-# Nothing under /assets should ever be a markdown file; check the leak guard holds.
-if curl -fsS -o /dev/null https://play.langerock.xyz/README.md 2>/dev/null; then
-  echo "WARNING: README.md is reachable on the live site" >&2
+# Check the leak guard on disk, not over HTTP: try_files rewrites any missing path
+# to /index.html, so /README.md answers 200 whether or not the file is there.
+LEAKED="$(ssh "${VPS_USER}@${VPS_HOST}" "find '${REMOTE_DIR}' \( -name '*.md' -o -name '.*' \) -print")"
+if [[ -n "$LEAKED" ]]; then
+  echo "WARNING: files that must never be served are on the box:" >&2
+  echo "$LEAKED" >&2
   exit 1
 fi
 echo "==> done"
