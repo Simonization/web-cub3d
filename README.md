@@ -4,11 +4,15 @@ A browser port of [cub3D](https://github.com/Simonization/cub3D), the 42 raycast
 Simon Langerock and `agoldber` wrote in C with MiniLibX — rebuilt so it can be played
 from a link, and edited from inside itself.
 
-Press **M** for a terminal where you draw the map with `0` and `1`. Press **C** for one
-where you set the floor and ceiling colours channel by channel and give each of the four
-walls its own image. Both screens explain what they are doing while you use them.
+Press **M** for a terminal where you draw the map: pick a brush (wall `1`, floor `0`,
+outside, or you) and click or drag on the grid. Press **C** for one where you set the
+floor and ceiling colours channel by channel and give each of the four walls its own
+image. Both screens explain what they are doing while you use them, and both close with
+`:w` (write — save and play) or `:q` (quit — leave without saving), typed or clicked.
 
-Then there are four levels and something behind a door marked THE END.
+Then there are four levels and something behind a door marked THE END. **Esc** (or **≡**
+on a phone) brings back the start screen, where you can jump to any of them; the sandbox
+keeps your map while you are away.
 [How the monsters work](public/making-of.html) is the long version: what DOOM actually
 did in 1993, and what this does instead.
 

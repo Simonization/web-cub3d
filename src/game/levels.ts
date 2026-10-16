@@ -18,6 +18,8 @@ export interface LevelDef {
   door?: { x: number; y: number };
   /** Ammo and health pickups, on walkable tiles. */
   pickups?: Array<{ x: number; y: number; kind: 'health' | 'ammo' }>;
+  /** Left out of the level picker: the only way in is through the door. */
+  secret?: boolean;
 }
 
 const STONE = {
@@ -150,6 +152,7 @@ export const LEVELS: LevelDef[] = [
   {
     name: '?',
     subtitle: 'That was not the end',
+    secret: true,
     grid: [
       '111111111111111111111',
       '100000000000000000001',

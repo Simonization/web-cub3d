@@ -71,6 +71,8 @@ class Game {
   private pickupTextures = new Map<string, Texture>();
   private enemyAtlas: Texture = solidTexture(0xff00ff);
   private door?: { x: number; y: number };
+  /** The sandbox as the player last saved it, so visiting a level does not wipe it. */
+  private sandbox?: CubLevel;
   private doorUsed = false;
   private hurtAt = -Infinity;
   private listeners: Array<(mode: Mode) => void> = [];
@@ -143,7 +145,10 @@ class Game {
 
   async loadLevel(index: number): Promise<void> {
     const def = LEVELS[index]!;
-    const parsed = parseCub(levelToCub(def));
+    const parsed =
+      index === 0 && this.sandbox
+        ? { ok: true as const, level: this.sandbox }
+        : parseCub(levelToCub(def));
     if (!parsed.ok) {
       throw new Error(`level ${index}: ${parsed.errors.map((e) => e.message).join('; ')}`);
     }
@@ -170,6 +175,7 @@ class Game {
   /** Applies an edited level: reload textures, keep the player, dig them out if buried. */
   async applyLevel(level: CubLevel, respawn = false): Promise<void> {
     this.level = level;
+    if (this.levelIndex === 0) this.sandbox = level;
     await this.loadTextures();
     if (respawn) this.player.spawn(level.spawn.x, level.spawn.y, level.spawn.facing);
     else ejectFromWall(level.grid, this.player);
@@ -452,6 +458,33 @@ async function boot(): Promise<void> {
   mountColorEditor(game);
 
   el('#start').addEventListener('click', () => game.setMode('PLAYING'));
+
+  // The level picker lives on the curtain, which Esc (or the touch ≡ button) brings back.
+  const levelsEl = el('#levels');
+  const renderLevels = (): void => {
+    const buttons = LEVELS.flatMap((def, index) => {
+      if (def.secret) return [];
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.innerHTML = `<b>${index}</b>${index === 0 ? 'Sandbox' : def.subtitle}`;
+      button.setAttribute('aria-current', String(index === game.levelIndex));
+      button.addEventListener('click', () => {
+        // loadLevel swaps the level in before its first await, so play can start
+        // now, inside the click that pointer lock needs.
+        void game.loadLevel(index);
+        game.setMode('PLAYING');
+      });
+      return [button];
+    });
+    const label = document.createElement('span');
+    label.textContent = 'or pick a level';
+    levelsEl.replaceChildren(label, ...buttons);
+  };
+  renderLevels();
+  game.onModeChange((mode) => {
+    if (mode === 'CURTAIN') renderLevels();
+  });
+  el('#touch-menu').addEventListener('click', () => game.setMode('CURTAIN'));
   canvas.addEventListener('click', () => {
     if (game.mode === 'CURTAIN') game.setMode('PLAYING');
   });

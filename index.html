@@ -22,7 +22,7 @@
         <div id="crosshair"></div>
         <div id="hint">
           <kbd>WASD</kbd> move · <kbd>mouse</kbd> look · <kbd>click</kbd> shoot ·
-          <kbd>M</kbd> map · <kbd>C</kbd> colours
+          <kbd>M</kbd> map · <kbd>C</kbd> colours · <kbd>Esc</kbd> levels
         </div>
         <div id="stats"></div>
         <div id="vitals">
@@ -46,6 +46,7 @@
         <button id="touch-fire" type="button" aria-label="Fire">FIRE</button>
         <button id="touch-map" type="button" aria-label="Edit map">M</button>
         <button id="touch-colour" type="button" aria-label="Edit colours">C</button>
+        <button id="touch-menu" type="button" aria-label="Pause and pick a level">≡</button>
       </div>
 
       <div id="curtain">
@@ -53,9 +54,10 @@
           <h1>cub3D</h1>
           <p class="sub">A raycaster you can rebuild while you are standing in it.</p>
           <button id="start" type="button">Enter</button>
+          <nav id="levels" class="levels" aria-label="Levels"></nav>
           <p class="keys">
-            <kbd>WASD</kbd> move · <kbd>M</kbd> edit the map · <kbd>C</kbd> edit the colours ·
-            <kbd>Esc</kbd> release the mouse
+            <kbd>WASD</kbd> move · <kbd>click</kbd> shoot · <kbd>M</kbd> map ·
+            <kbd>C</kbd> colours · <kbd>Esc</kbd> pause and pick a level
           </p>
           <p class="credit">
             Ported from the 42 project by Simon Langerock and agoldber. ·

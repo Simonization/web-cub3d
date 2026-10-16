@@ -37,7 +37,11 @@ export function mountColorEditor(game: Game): void {
   const terminal = new Terminal({
     id: 'color-editor',
     title: 'COLOUR',
-    hint: 'drag the sliders · upload an image per wall · :w apply · :q cancel',
+    hint: 'drag the sliders · upload an image per wall',
+    commands: [
+      { command: 'w', word: 'write', does: 'save these colours and play' },
+      { command: 'q', word: 'quit', does: 'leave without saving' },
+    ],
   });
 
   const layout = document.createElement('div');
@@ -219,7 +223,7 @@ export function mountColorEditor(game: Game): void {
         close();
         break;
       case 'help':
-        terminal.setStatus(':w apply · :q cancel', 'muted');
+        terminal.setStatus(':w write (save and play) · :q quit (no save) · Esc = :q', 'muted');
         break;
       default:
         terminal.setStatus(`unknown command "${command}" — try :help`, 'warn');

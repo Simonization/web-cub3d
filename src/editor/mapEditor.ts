@@ -2,9 +2,15 @@ import { parseCub, serializeCub, validateWalls } from '../format/cub';
 import type { Game } from '../main';
 import { explainer, Terminal } from './terminal';
 
-const PAINTABLE = new Set(['0', '1', ' ']);
 const SPAWNS = new Set(['N', 'S', 'E', 'W']);
 const MAX_SIDE = 64;
+
+/** What a click or a drag puts down. `spawn` is the player, facing `facing`. */
+type Brush = '1' | '0' | ' ' | 'spawn';
+
+const BRUSH_KEYS: Record<string, Brush> = { '1': '1', '0': '0', ' ': ' ' };
+const FACING_NAMES: Record<string, string> = { N: 'north', E: 'east', S: 'south', W: 'west' };
+const TURN_RIGHT: Record<string, string> = { N: 'E', E: 'S', S: 'W', W: 'N' };
 
 const PATH_EXPLAINER = `
 <p>In the C version a line like <code>NO ./textures/wall_n.xpm</code> is a <em>path</em>.
@@ -24,7 +30,12 @@ export function mountMapEditor(game: Game): void {
   const terminal = new Terminal({
     id: 'map-editor',
     title: 'MAP',
-    hint: 'arrows move · 0 1 space paint · NSEW spawn · :w apply · :q cancel',
+    hint: 'pick a brush · click or drag to paint · arrow keys + 1 0 space to paint by keyboard',
+    commands: [
+      { command: 'w', word: 'write', does: 'save this map and walk into it' },
+      { command: 'q', word: 'quit', does: 'leave without saving' },
+      { command: 'help', word: 'help', does: 'list every command' },
+    ],
   });
 
   const layout = document.createElement('div');
@@ -32,12 +43,27 @@ export function mountMapEditor(game: Game): void {
   layout.innerHTML = `
     <div class="map-grid-wrap"><div class="map-grid" tabindex="0"></div></div>
     <aside class="map-side">
-      <div class="legend">
-        <div><b>1</b> wall</div>
-        <div><b>0</b> floor</div>
-        <div><b>&middot;</b> outside</div>
-        <div><b>N S E W</b> you, and which way you face</div>
+      <div class="brushes" role="radiogroup" aria-label="Paint with">
+        <p class="side-title">Paint with</p>
+        <button type="button" class="brush" role="radio" data-brush="1">
+          <b class="swatch-wall">1</b><span>Wall</span><kbd>1</kbd>
+        </button>
+        <button type="button" class="brush" role="radio" data-brush="0">
+          <b>0</b><span>Floor</span><kbd>0</kbd>
+        </button>
+        <button type="button" class="brush" role="radio" data-brush=" ">
+          <b class="swatch-void">&middot;</b><span>Outside the map</span><kbd>space</kbd>
+        </button>
+        <button type="button" class="brush" role="radio" data-brush="spawn">
+          <b class="swatch-spawn facing">N</b>
+          <span>You, facing <i class="facing-name">north</i><small>click again to turn</small></span>
+          <kbd>N E S W</kbd>
+        </button>
       </div>
+      <p class="howto">
+        Click a square to paint it with the brush, or hold and drag. Every wall must be
+        closed: red squares show where the floor leaks out.
+      </p>
       <div class="lint"></div>
       <div class="explainers"></div>
     </aside>
@@ -46,6 +72,9 @@ export function mountMapEditor(game: Game): void {
 
   const gridEl = layout.querySelector<HTMLDivElement>('.map-grid')!;
   const lintEl = layout.querySelector<HTMLDivElement>('.lint')!;
+  const brushButtons = [...layout.querySelectorAll<HTMLButtonElement>('.brush')];
+  const facingEl = layout.querySelector<HTMLElement>('.facing')!;
+  const facingNameEl = layout.querySelector<HTMLElement>('.facing-name')!;
   layout
     .querySelector('.explainers')!
     .append(explainer('How does it read an image path?', PATH_EXPLAINER));
@@ -53,9 +82,16 @@ export function mountMapEditor(game: Game): void {
   let rows: string[] = [];
   let cursorX = 0;
   let cursorY = 0;
-  let painting: string | null = null;
+  let brush: Brush = '1';
+  let facing = 'N';
+  let painting = false;
+  // The yellow cursor only exists for keyboard painting. With the mouse there is
+  // nothing under it to aim, so a key that picks a brush must not also paint
+  // whichever square happened to be clicked last.
+  let keyboardCursor = false;
 
   const width = (): number => rows.reduce((max, row) => Math.max(max, row.length), 0);
+  const brushChar = (): string => (brush === 'spawn' ? facing : brush);
 
   function setCell(x: number, y: number, ch: string): void {
     if (y < 0 || y >= rows.length || x < 0) return;
@@ -64,6 +100,36 @@ export function mountMapEditor(game: Game): void {
       rows = rows.map((r) => r.replace(/[NSEW]/g, '0'));
     }
     rows[y] = row.slice(0, x) + ch + row.slice(x + 1);
+    render();
+  }
+
+  /** Puts the brush down. Returns false when it refused to paint over the player. */
+  function paint(x: number, y: number): boolean {
+    const current = rows[y]?.[x] ?? ' ';
+    const ch = brushChar();
+    // Only the "you" brush moves the player; the others go round them, so a drag
+    // across the room cannot leave the map without anyone in it.
+    if (SPAWNS.has(current) && !SPAWNS.has(ch)) return false;
+    if (current !== ch) setCell(x, y, ch);
+    return true;
+  }
+
+  function selectBrush(next: Brush): void {
+    brush = next;
+    for (const button of brushButtons) {
+      const active = button.dataset.brush === next;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-checked', String(active));
+    }
+    facingEl.textContent = facing;
+    facingNameEl.textContent = FACING_NAMES[facing]!;
+  }
+
+  /** Turns the player where they stand, so the brush and the map never disagree. */
+  function face(next: string): void {
+    facing = next;
+    rows = rows.map((r) => r.replace(/[NSEW]/g, next));
+    selectBrush('spawn');
     render();
   }
 
@@ -86,7 +152,7 @@ export function mountMapEditor(game: Game): void {
           else if (SPAWNS.has(ch)) cell.classList.add('spawn');
           else if (ch === ' ') cell.classList.add('void');
           if (bad.has(`${x},${y}`)) cell.classList.add('bad');
-          if (x === cursorX && y === cursorY) cell.classList.add('cursor');
+          if (keyboardCursor && x === cursorX && y === cursorY) cell.classList.add('cursor');
           return cell;
         }),
       ),
@@ -99,7 +165,9 @@ export function mountMapEditor(game: Game): void {
     const draft = draftLevel();
     const parsed = parseCub(draft);
     if (parsed.ok) {
-      lintEl.innerHTML = '<p class="ok">Map is valid. <b>:w</b> to drop into it.</p>';
+      lintEl.innerHTML =
+        '<p class="ok">Map is valid. Type <b>:w</b> in the box at the bottom and press ' +
+        'Enter to walk into it.</p>';
       terminal.setStatus(`${width()}x${rows.length} · valid`, 'ok');
       return;
     }
@@ -128,6 +196,9 @@ export function mountMapEditor(game: Game): void {
     const spawn = game.level.spawn;
     cursorX = spawn.x;
     cursorY = spawn.y;
+    facing = spawn.facing;
+    keyboardCursor = false;
+    selectBrush(brush);
     terminal.show();
     render();
     gridEl.focus();
@@ -141,7 +212,7 @@ export function mountMapEditor(game: Game): void {
   async function apply(): Promise<void> {
     const parsed = parseCub(draftLevel());
     if (!parsed.ok) {
-      terminal.setStatus(`cannot apply: ${parsed.errors[0]!.message}`, 'error');
+      terminal.setStatus(`can't save yet: ${parsed.errors[0]!.message}`, 'error');
       return;
     }
     await game.applyLevel(parsed.level);
@@ -158,7 +229,7 @@ export function mountMapEditor(game: Game): void {
     );
     const midY = height >> 1;
     const midX = cols >> 1;
-    rows[midY] = rows[midY]!.slice(0, midX) + 'N' + rows[midY]!.slice(midX + 1);
+    rows[midY] = rows[midY]!.slice(0, midX) + facing + rows[midY]!.slice(midX + 1);
     cursorX = midX;
     cursorY = midY;
     render();
@@ -190,20 +261,32 @@ export function mountMapEditor(game: Game): void {
       rows = [...parsed.level.grid];
       cursorX = parsed.level.spawn.x;
       cursorY = parsed.level.spawn.y;
+      facing = parsed.level.spawn.facing;
+      selectBrush(brush);
       render();
       terminal.setStatus(`loaded ${file.name}`, 'ok');
     });
     picker.click();
   }
 
+  for (const button of brushButtons) {
+    button.addEventListener('click', () => {
+      const next = button.dataset.brush as Brush;
+      if (next === 'spawn' && brush === 'spawn') face(TURN_RIGHT[facing]!);
+      else selectBrush(next);
+      gridEl.focus();
+    });
+  }
+
   gridEl.addEventListener('keydown', (event) => {
     const key = event.key;
-    const lower = key.toLowerCase();
+    const upper = key.toUpperCase();
     const w = width();
 
     if (key === 'Escape') return void close();
     if (key === ':') {
       event.preventDefault();
+      terminal.prompt.value = ':';
       terminal.prompt.focus();
       return;
     }
@@ -222,56 +305,66 @@ export function mountMapEditor(game: Game): void {
     const move = moves[key];
     if (move) {
       event.preventDefault();
-      cursorX = Math.min(Math.max(cursorX + move[0], 0), Math.max(w - 1, 0));
-      cursorY = Math.min(Math.max(cursorY + move[1], 0), rows.length - 1);
+      if (keyboardCursor) {
+        cursorX = Math.min(Math.max(cursorX + move[0], 0), Math.max(w - 1, 0));
+        cursorY = Math.min(Math.max(cursorY + move[1], 0), rows.length - 1);
+      }
+      keyboardCursor = true;
       render();
       return;
     }
 
-    if (PAINTABLE.has(key)) {
+    const picked = BRUSH_KEYS[key];
+    if (picked !== undefined) {
       event.preventDefault();
-      setCell(cursorX, cursorY, key);
+      selectBrush(picked);
+      if (keyboardCursor) paint(cursorX, cursorY);
       return;
     }
-    if (SPAWNS.has(lower.toUpperCase()) && 'nsew'.includes(lower)) {
+    if (key.length === 1 && SPAWNS.has(upper)) {
       event.preventDefault();
-      setCell(cursorX, cursorY, lower.toUpperCase());
-      return;
-    }
-    if (key === 'Tab') {
-      event.preventDefault();
-      const current = rows[cursorY]?.[cursorX] ?? ' ';
-      setCell(cursorX, cursorY, current === '1' ? '0' : '1');
+      face(upper);
+      if (keyboardCursor) paint(cursorX, cursorY);
     }
   });
 
-  const cellAt = (target: EventTarget | null): HTMLElement | null => {
-    const el = target as HTMLElement | null;
-    return el?.classList.contains('cell') ? el : null;
+  const cellAt = (x: number, y: number): HTMLElement | null => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    return el?.classList.contains('cell') && gridEl.contains(el) ? el : null;
   };
 
   gridEl.addEventListener('pointerdown', (event) => {
-    const cell = cellAt(event.target);
+    const cell = cellAt(event.clientX, event.clientY);
     if (!cell) return;
     event.preventDefault();
     gridEl.focus();
+    // Touch captures the pointer to the first square; release it so the drag
+    // keeps finding the square under the finger.
+    (event.target as Element).releasePointerCapture?.(event.pointerId);
+    keyboardCursor = false;
     cursorX = Number(cell.dataset.x);
     cursorY = Number(cell.dataset.y);
-    const current = rows[cursorY]?.[cursorX] ?? ' ';
-    painting = current === '1' ? '0' : '1';
-    setCell(cursorX, cursorY, painting);
+    painting = true;
+    if (!paint(cursorX, cursorY)) {
+      terminal.setStatus(
+        `that ${rows[cursorY]![cursorX]} is you — pick the "You" brush to move yourself`,
+        'warn',
+      );
+    }
   });
 
-  gridEl.addEventListener('pointerover', (event) => {
-    if (painting === null) return;
-    const cell = cellAt(event.target);
+  gridEl.addEventListener('pointermove', (event) => {
+    if (!painting) return;
+    const cell = cellAt(event.clientX, event.clientY);
     if (!cell) return;
-    setCell(Number(cell.dataset.x), Number(cell.dataset.y), painting);
+    paint(Number(cell.dataset.x), Number(cell.dataset.y));
   });
 
-  window.addEventListener('pointerup', () => {
-    painting = null;
-  });
+  const stopPainting = (): void => {
+    painting = false;
+  };
+  window.addEventListener('pointerup', stopPainting);
+  window.addEventListener('pointercancel', stopPainting);
 
   terminal.onCommand((command, args) => {
     switch (command) {
@@ -291,7 +384,11 @@ export function mountMapEditor(game: Game): void {
         loadFile();
         break;
       case 'help':
-        terminal.setStatus(':w apply · :q cancel · :new W H · :load · :save · :help', 'muted');
+        terminal.setStatus(
+          ':w write (save and play) · :q quit (no save) · :new 20 12 blank map, 20 wide 12 high · ' +
+            ':save download it as a .cub file · :load open one · Esc does the same as :q',
+          'muted',
+        );
         break;
       default:
         terminal.setStatus(`unknown command "${command}" — try :help`, 'warn');

@@ -126,6 +126,12 @@ kbd {
   gap: 10px;
 }
 
+/* `display: grid` above outranks the hidden attribute, so the touch buttons
+   showed on desktop too. */
+#touch[hidden] {
+  display: none;
+}
+
 #touch button {
   width: 48px;
   height: 48px;
@@ -201,6 +207,48 @@ kbd {
   line-height: 2.1;
 }
 
+.levels {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 1.4rem;
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.levels > span {
+  flex-basis: 100%;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 0.7rem;
+}
+
+.panel .levels button {
+  padding: 0.45rem 0.8rem;
+  border-color: #334155;
+  color: #cbd5e1;
+  font: 500 0.8rem/1.2 var(--mono);
+  letter-spacing: 0.02em;
+}
+
+.panel .levels button b {
+  margin-right: 0.4em;
+  color: var(--terminal);
+}
+
+.panel .levels button[aria-current='true'] {
+  border-color: var(--terminal);
+}
+
+.panel .levels button:hover,
+.panel .levels button:focus-visible {
+  border-color: var(--terminal);
+  background: #4ade8022;
+  color: #f1f5f9;
+}
+
 .panel .credit {
   margin-top: 0.4rem;
   color: #475569;
@@ -208,7 +256,8 @@ kbd {
 }
 
 @media (max-width: 640px) {
-  #hint {
+  #hint,
+  .terminal-frame .hint {
     display: none;
   }
 }
@@ -310,6 +359,60 @@ kbd {
   outline: none;
 }
 
+.terminal-prompt input::placeholder {
+  color: #2f6b49;
+}
+
+.terminal-prompt input.typed {
+  color: var(--amber);
+}
+
+.terminal-commands {
+  padding: 8px 14px 10px;
+  border-top: 1px solid #14301f;
+  font-size: 12px;
+  color: #4b8f68;
+}
+
+.terminal-commands p {
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+.command-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.command-buttons button {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #1c3b2a;
+  border-radius: 5px;
+  background: #06120b;
+  color: #b4c6bb;
+  font: inherit;
+  cursor: pointer;
+}
+
+.command-buttons button:hover,
+.command-buttons button:focus-visible {
+  border-color: var(--terminal);
+  background: #0d2216;
+}
+
+.command-buttons code {
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.command-buttons b {
+  color: var(--terminal);
+}
+
 .scanlines {
   position: absolute;
   inset: 0;
@@ -342,6 +445,8 @@ kbd {
   line-height: 1.15;
   user-select: none;
   cursor: crosshair;
+  /* A finger dragging across the grid paints; without this it scrolls instead. */
+  touch-action: none;
 }
 
 .map-grid .cell {
@@ -365,13 +470,63 @@ kbd {
   font-size: 12px;
 }
 
-.legend {
+.brushes {
   display: grid;
-  gap: 3px;
-  color: #4b8f68;
+  gap: 6px;
 }
 
-.legend b { color: var(--terminal); }
+.side-title {
+  margin: 0;
+  color: #4b8f68;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+
+.brush {
+  display: grid;
+  grid-template-columns: 1.9em 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid #14301f;
+  border-radius: 6px;
+  background: transparent;
+  color: #b4c6bb;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.brush:hover { border-color: #2f6b49; }
+
+.brush.active {
+  border-color: var(--amber);
+  background: #1f1a0a;
+  color: #f1f5f9;
+  box-shadow: 0 0 0 1px var(--amber) inset;
+}
+
+.brush b {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  border-radius: 3px;
+  color: #2f6b49;
+  font-size: 15px;
+}
+
+.brush b.swatch-wall { color: var(--terminal); background: #10281c; }
+.brush b.swatch-void { color: #1b3527; }
+.brush b.swatch-spawn { color: var(--amber); }
+.brush small { display: block; color: #4b8f68; font-size: 10px; }
+.brush kbd { font-size: 10px; }
+
+.howto {
+  margin: 0;
+  color: #4b8f68;
+  line-height: 1.5;
+}
 
 .lint .ok { color: var(--terminal); }
 .lint .err { color: var(--danger); margin: 0 0 6px; }
@@ -502,6 +657,13 @@ kbd {
 @media (max-width: 860px) {
   .map-layout { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
   .face { grid-template-columns: 1fr auto auto; }
+  /* The grid takes the room it needs and the whole screen scrolls; a squeezed,
+     separately scrolling grid hid its own top rows on phones. */
+  .map-layout { height: auto; grid-template-rows: auto auto; }
+  .map-grid-wrap { overflow-x: auto; }
+  .brushes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .brushes .side-title { grid-column: 1 / -1; }
+  .brush kbd, .brush small { display: none; }
 }
 
 /* ---------- combat HUD ---------- */
