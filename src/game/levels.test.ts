@@ -71,13 +71,18 @@ describe.each(LEVELS.map((level, index) => [index, level] as const))(
 );
 
 describe('the door', () => {
-  it('exists on level 3 and nowhere else', () => {
+  it('exists on level 3 (the fake end) and the boss arena (the real one), nowhere else', () => {
     const withDoors = LEVELS.map((l, i) => (doorTile(l) ? i : -1)).filter((i) => i >= 0);
-    expect(withDoors).toEqual([3]);
+    expect(withDoors).toEqual([3, 4]);
+    expect(LEVELS[4]!.secret).toBe(true);
   });
 
-  it('sits against a wall the player can walk up to', () => {
-    const level = LEVELS[3]!;
+  it('is a plain wall in the .cub export, on every level', () => {
+    for (const level of LEVELS) expect(levelToCub(level)).not.toContain('D');
+  });
+
+  it.each([3, 4])('on level %i sits against a wall the player can walk up to', (index) => {
+    const level = LEVELS[index]!;
     const door = doorTile(level)!;
     const parsed = parseCub(levelToCub(level));
     expect(parsed.ok).toBe(true);

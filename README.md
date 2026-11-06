@@ -60,6 +60,10 @@ scripts/smoke.mjs   drives the real page in Chromium
 src/engine/         framebuffer, raycaster, player, textures, input
 src/format/         the .cub parser and validator
 src/editor/         the M and C screens
+src/bugs/           the "Bugs & ideas" panel on the start screen
+server/             the bug board API (Node built-ins only, no build step)
+scripts/bugs.mjs    list / delete bug reports from a terminal
+deploy/             Caddy block, systemd unit, deploy script
 ```
 
 ## Tests
@@ -69,6 +73,61 @@ npm test                                          # unit + parity fixtures
 node scripts/smoke.mjs http://localhost:5173 shots
 python3 scripts/parity-fuzz.py ./parity ../cub3D  # needs the C harness built
 ```
+
+## Bug board
+
+The start screen has a **Bugs & ideas** button: a short form (bug or idea, a message,
+an optional name) and the public list of everything already reported. It is the only
+part of the site with a backend: `server/index.mjs`, a dependency-free Node service that
+keeps the reports in one JSON file (written to a temp file, fsynced, renamed — so a
+crash never leaves half a file). Caddy sends `/api/*` to it on `127.0.0.1:8787`.
+
+| Endpoint | |
+| --- | --- |
+| `GET /api/bugs` | every report, newest first (no IPs are stored or returned) |
+| `POST /api/bugs` | `{type: "bug" \| "suggestion", message, name?}` — 3–500 characters, name ≤ 40 |
+| `DELETE /api/bugs/:id` | needs `Authorization: Bearer <BUGS_ADMIN_KEY>` |
+| `GET /api/health` | `{ok, reports}` |
+
+Guards: 4 KB body cap, JSON only, control/bidi characters stripped, 5 posts per 10
+minutes per IP, 10 wrong admin keys per 15 minutes per IP, exact duplicates refused,
+500 reports max, a honeypot field for bots. The page puts every report on screen with
+`textContent`, never `innerHTML`. If the API is down the panel says so and the game is
+unaffected. Tests: `server/core.test.mjs`.
+
+**Removing fixed reports** — no login, two ways, both using the same key:
+
+- Admin link: `https://play.langerock.xyz/bugs/admin#key=<KEY>` opens the panel with a
+  delete button on each report. `npm run bugs -- link` prints it. Use `#key=`, not
+  `?key=`: a fragment never leaves the browser, so the key never reaches Caddy's access
+  log (`?key=` works too, but gets logged). The page wipes the key from the address bar.
+- CLI: `npm run bugs -- list`, `npm run bugs -- rm 12 13`. It reads `BUGS_ADMIN_KEY` and
+  `BUGS_URL` from the environment or from `.env.local` (gitignored; see `.env.example`).
+
+**Locally:** `npm run bugs:dev` (API on :8787, data in `server/data/`, gitignored) next to
+`npm run dev` — Vite proxies `/api` to it. Without it the panel just shows "offline".
+
+### Deploying the bug board (once)
+
+```sh
+npm run bugs -- keygen                     # make a key; put it in .env.local as BUGS_ADMIN_KEY=...
+ssh root@167.86.92.85 'command -v node && node --version'   # need Node 18+; fix ExecStart if not /usr/bin/node
+ssh root@167.86.92.85 'ss -ltn | grep -c :8787'             # must print 0: port is free
+rsync -av server/core.mjs server/index.mjs root@167.86.92.85:/opt/cub3d-bugs/
+scp deploy/cub3d-bugs.service root@167.86.92.85:/etc/systemd/system/
+ssh root@167.86.92.85 'umask 077 && printf "BUGS_ADMIN_KEY=%s\n" "<KEY>" > /etc/cub3d-bugs.env'
+ssh root@167.86.92.85 'systemctl daemon-reload && systemctl enable --now cub3d-bugs && curl -s 127.0.0.1:8787/api/health'
+# Replace the play.langerock.xyz block in ~/contaboguidel/infra/Caddyfile with deploy/play.caddy
+# (it now splits /api/* into its own handle), then run infra/deploy.sh; it validates and reloads.
+./deploy/deploy.sh                         # ships the frontend with the new button
+curl -s https://play.langerock.xyz/api/health   # {"ok":true,...}
+npm run bugs -- list                       # "No reports."
+```
+
+The frontend can go out before or after the API: until `/api/*` answers JSON, the panel
+shows "offline". Reports live in `/var/lib/cub3d-bugs/bugs.json` — back that file up if
+you care about them. Server code updates are the `rsync` line plus
+`systemctl restart cub3d-bugs`.
 
 ## Credits
 

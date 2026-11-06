@@ -59,7 +59,7 @@ await page.waitForFunction(() => globalThis.__cub3d !== undefined, null, { timeo
 await shot('01-curtain');
 
 // --- play: one round-trip covering entry, movement and capture -----------
-await page.click('#start');
+await page.click('#levels button >> nth=0'); // the sandbox
 const play = await inPage(`
   await frames(3);
   const start = { x: g.player.x, y: g.player.y, angle: g.player.angle };

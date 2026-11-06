@@ -7,21 +7,45 @@
 #
 # Modelled on the goodnews block, with arcade's security headers but deliberately
 # WITHOUT X-Robots-Tag noindex: this one is meant to be found and shared.
+#
+# /api/* goes to the bug board (server/, systemd unit deploy/cub3d-bugs.service,
+# listening on 127.0.0.1:8787 only). It has to sit in its own `handle`: try_files
+# runs before reverse_proxy in Caddy's directive order, so without the split every
+# /api/ request would be rewritten to /index.html and never reach the API.
 
 play.langerock.xyz {
 	import noleak
 	import accesslog
-	root * /srv/http/play
 	encode zstd gzip
-	file_server
-	try_files {path} /index.html
 	header {
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 	}
+
+	handle /api/* {
+		request_body {
+			max_size 8KB
+		}
+		reverse_proxy 127.0.0.1:8787
+	}
+
+	handle {
+		root * /srv/http/play
+		file_server
+		try_files {path} /index.html
+	}
+
 	# Hashed asset filenames, so they can be cached hard; the entry HTML cannot.
 	@immutable path /assets/*
 	header @immutable Cache-Control "public, max-age=31536000, immutable"
 	@entry path / /index.html
 	header @entry Cache-Control "no-cache"
+	# The admin page is index.html too (the key rides in the #fragment, which
+	# browsers never send, and the page wipes it from the address bar): keep it out
+	# of caches and search engines.
+	@admin path /bugs/admin /bugs/admin/
+	header @admin {
+		Cache-Control "no-store"
+		X-Robots-Tag "noindex, nofollow"
+	}
 }

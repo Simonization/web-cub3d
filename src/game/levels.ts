@@ -14,7 +14,7 @@ export interface LevelDef {
   ceiling: [number, number, number];
   textures: { NO: string; SO: string; WE: string; EA: string };
   enemies: EnemySpawn[];
-  /** Tile of the door marked THE END. It is a '1' in the grid, so the C sees a wall. */
+  /** Tile of the door (a 'D' in the grid works too). It is a '1' for the C, which sees a wall. On the secret level it is the real way out, sealed until the boss is dead. */
   door?: { x: number; y: number };
   /** Ammo and health pickups, on walkable tiles. */
   pickups?: Array<{ x: number; y: number; kind: 'health' | 'ammo' }>;
@@ -36,10 +36,10 @@ const STONE = {
  * column so the room is exactly symmetric, which is fiddly to get right by hand and
  * obvious when it is wrong. `levels.test.ts` holds it to that.
  */
-const SANDBOX_WIDTH = 21;
-const SANDBOX_HEIGHT = 13;
-export const SANDBOX_PILLARS = [5, 6, 7, 13, 14, 15];
-const SANDBOX_PILLAR_ROWS = new Set([3, 4, 5, 7, 8, 9]);
+const SANDBOX_WIDTH = 41;
+const SANDBOX_HEIGHT = 25;
+export const SANDBOX_PILLARS = [15, 16, 17, 23, 24, 25];
+const SANDBOX_PILLAR_ROWS = new Set([9, 10, 11, 13, 14, 15]);
 
 function sandboxGrid(): string[] {
   const spawnX = (SANDBOX_WIDTH - 1) / 2;
@@ -162,7 +162,7 @@ export const LEVELS: LevelDef[] = [
       '100000000000000000001',
       '100000000000000000001',
       '100000000000000000001',
-      '100000000N00000000001',
+      '100000000N0000000000D',
       '100000000000000000001',
       '100000000000000000001',
       '100011000000000110001',
@@ -179,6 +179,11 @@ export const LEVELS: LevelDef[] = [
       { x: 2.5, y: 8.5, kind: 'health' },
       { x: 18.5, y: 8.5, kind: 'health' },
       { x: 10.5, y: 14.5, kind: 'ammo' },
+      { x: 2.5, y: 13.5, kind: 'health' },
+      { x: 18.5, y: 13.5, kind: 'health' },
+      { x: 10.5, y: 12.5, kind: 'health' },
+      { x: 2.5, y: 5.5, kind: 'ammo' },
+      { x: 18.5, y: 11.5, kind: 'ammo' },
     ],
   },
 ];

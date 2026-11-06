@@ -3,14 +3,20 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
-    <title>cub3D</title>
-    <meta name="description" content="A browser raycaster you can rebuild while you play it. Draw the map, pick the colours, walk around inside it." />
-    <meta property="og:title" content="cub3D — build your own maze" />
-    <meta property="og:description" content="A browser raycaster you can rebuild while you play it. Draw the map, pick the colours, walk around inside it." />
+    <title>cub3D — draw a maze, walk inside it</title>
+    <meta name="description" content="Draw a maze as a grid of 1s and 0s, type :w like in vim, and walk around inside it in 3D. A browser raycaster ported from a 42 project." />
+    <meta property="og:title" content="cub3D — draw a maze, walk inside it" />
+    <meta property="og:description" content="Draw a maze as a grid of 1s and 0s, type :w like in vim, and walk around inside it in 3D. A browser raycaster ported from a 42 project." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://play.langerock.xyz/" />
     <meta property="og:image" content="https://play.langerock.xyz/preview.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="The cub3D map editor, a grid of 1s and 0s with :w typed, next to the 3D view it produces" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="cub3D — draw a maze, walk inside it" />
+    <meta name="twitter:description" content="Draw a maze as a grid of 1s and 0s, type :w like in vim, and walk around inside it in 3D. A browser raycaster ported from a 42 project." />
+    <meta name="twitter:image" content="https://play.langerock.xyz/preview.png" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🧱</text></svg>" />
     <link rel="stylesheet" href="/src/style.css" />
   </head>
@@ -21,17 +27,27 @@
       <div id="hud" hidden>
         <div id="crosshair"></div>
         <div id="hint">
-          <kbd>WASD</kbd> move · <kbd>mouse</kbd> look · <kbd>click</kbd> shoot ·
-          <kbd>M</kbd> map · <kbd>C</kbd> colours · <kbd>Esc</kbd> levels
+          <span id="hint-sandbox"><kbd>M</kbd> draw map · <kbd>C</kbd> colours · <kbd>Esc</kbd> menu</span>
+          <span id="hint-level" hidden>
+            <kbd>click</kbd>/<kbd>Space</kbd> shoot · <kbd>R</kbd> restart · <kbd>Esc</kbd> levels
+          </span>
         </div>
         <div id="stats"></div>
         <div id="vitals">
-          <span id="health"><b>100</b> hp</span>
-          <span id="ammo"><b>40</b> ammo</span>
+          <span id="health"><span class="label">HEALTH</span><b>100</b><i class="bar"><i></i></i></span>
+          <span id="ammo"><span class="label">AMMO</span><b>40</b><i class="bar"><i></i></i></span>
           <span id="left"></span>
         </div>
+        <div id="target" hidden><span id="target-name"></span><b id="target-hp"></b><i class="bar"><i></i></i></div>
+        <div id="hitmarker"></div>
+        <div id="floaters"></div>
+        <div id="noammo">NO AMMO</div>
         <div id="banner"></div>
         <div id="damage"></div>
+        <div id="touch-help" hidden>
+          <span>left thumb: walk</span><span>right thumb: look</span>
+        </div>
+        <div id="rotate" role="status">Turn your phone sideways to play</div>
       </div>
 
       <div id="between" hidden>
@@ -40,6 +56,44 @@
           <p id="between-text"></p>
           <button id="between-go" type="button">Continue</button>
         </div>
+      </div>
+
+      <!-- The real ending: run stats after the boss door. Filled in by Game.showVictory(). -->
+      <div id="victory" hidden>
+        <div class="card" role="dialog" aria-labelledby="victory-title">
+          <p class="kicker">the final boss is down</p>
+          <h2 id="victory-title">YOU ESCAPED</h2>
+          <div class="hero">
+            <div class="big"><span>Total time</span><b id="v-time">00:00</b></div>
+            <div class="big">
+              <span>Accuracy</span><b id="v-acc">--</b>
+              <i class="meter"><i id="v-acc-bar"></i></i>
+            </div>
+          </div>
+          <dl class="tiles">
+            <div><dt>Shots fired</dt><dd id="v-shots">0</dd></div>
+            <div class="good"><dt>On target</dt><dd id="v-hits">0</dd></div>
+            <div class="bad"><dt>Off target</dt><dd id="v-misses">0</dd></div>
+            <div><dt>Times you got hit</dt><dd id="v-hurt">0</dd></div>
+            <div><dt>HP lost</dt><dd id="v-hp">0</dd></div>
+            <div><dt>Deaths</dt><dd id="v-deaths">0</dd></div>
+          </dl>
+          <div class="actions">
+            <button id="victory-again" type="button">Play again</button>
+            <button id="victory-menu" type="button" class="ghost">Menu</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- The fake ending: black, THE END, a white flash, then the boss. Driven by src/game/finale.ts. -->
+      <div id="finale" hidden aria-live="assertive">
+        <div class="veil"></div>
+        <div id="finale-end" hidden>
+          <h2>THE END</h2>
+          <p>cub3D — Simon Langerock &amp; agoldber · thanks for playing</p>
+        </div>
+        <div class="flash"></div>
+        <div id="finale-boss" hidden><span>SURPRISE,</span><b>FINAL BOSS</b></div>
       </div>
 
       <div id="touch" hidden>
@@ -53,12 +107,14 @@
         <div class="panel">
           <h1>cub3D</h1>
           <p class="sub">A raycaster you can rebuild while you are standing in it.</p>
-          <button id="start" type="button">Enter</button>
+          <div class="mains">
+            <button id="start-map" type="button">Draw a map <kbd>M</kbd></button>
+            <button id="start-colour" type="button">Pick colours <kbd>C</kbd></button>
+            <button id="start" type="button" class="primary">Play <small>(Level 1)</small></button>
+          </div>
+          <p class="vim">In the editors, type <code>:w</code> to save and walk in, <code>:q</code> to quit. Like vim.</p>
           <nav id="levels" class="levels" aria-label="Levels"></nav>
-          <p class="keys">
-            <kbd>WASD</kbd> move · <kbd>click</kbd> shoot · <kbd>M</kbd> map ·
-            <kbd>C</kbd> colours · <kbd>Esc</kbd> pause and pick a level
-          </p>
+          <button id="bugs-open" class="bugs-open" type="button">Bugs &amp; ideas</button>
           <p class="credit">
             Ported from the 42 project by Simon Langerock and agoldber. ·
             <a href="/making-of.html">How the monsters work</a>

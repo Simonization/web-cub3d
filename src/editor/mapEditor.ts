@@ -1,9 +1,10 @@
 import { parseCub, serializeCub, validateWalls } from '../format/cub';
 import type { Game } from '../main';
 import { explainer, Terminal } from './terminal';
+import { advance, parseSize, retreat } from './typing';
 
 const SPAWNS = new Set(['N', 'S', 'E', 'W']);
-const MAX_SIDE = 64;
+const MAX_SIDE = 100;
 
 /** What a click or a drag puts down. `spawn` is the player, facing `facing`. */
 type Brush = '1' | '0' | ' ' | 'spawn';
@@ -26,11 +27,23 @@ simply stands for the image you gave it, held in your browser.</p>
 lookup differs.</p>
 `;
 
+const HOWTO_SHORT =
+  '1 wall &middot; 0 floor &middot; click to paint &middot; <b>:w</b> to walk in';
+
+/** Shown in place of the one-liner once the player types :help. */
+const HOWTO_LONG = `
+  <b>Type it like vim:</b> the yellow square is your cursor. Press <kbd>1</kbd> for a
+  wall, <kbd>0</kbd> for floor, <kbd>space</kbd> for outside; it writes and steps right.
+  Arrows move, <kbd>Backspace</kbd> erases, <kbd>:</kbd> opens the command box.
+  Or click a square to paint it with the brush, or hold and drag. Every wall must be
+  closed: red squares show where the floor leaks out.
+`;
+
 export function mountMapEditor(game: Game): void {
   const terminal = new Terminal({
     id: 'map-editor',
     title: 'MAP',
-    hint: 'pick a brush · click or drag to paint · arrow keys + 1 0 space to paint by keyboard',
+    hint: 'type 1 0 or space to write into the map · arrows move · click or drag to paint',
     commands: [
       { command: 'w', word: 'write', does: 'save this map and walk into it' },
       { command: 'q', word: 'quit', does: 'leave without saving' },
@@ -60,10 +73,7 @@ export function mountMapEditor(game: Game): void {
           <kbd>N E S W</kbd>
         </button>
       </div>
-      <p class="howto">
-        Click a square to paint it with the brush, or hold and drag. Every wall must be
-        closed: red squares show where the floor leaks out.
-      </p>
+      <p class="howto">${HOWTO_SHORT}</p>
       <div class="lint"></div>
       <div class="explainers"></div>
     </aside>
@@ -71,6 +81,7 @@ export function mountMapEditor(game: Game): void {
   terminal.body.append(layout);
 
   const gridEl = layout.querySelector<HTMLDivElement>('.map-grid')!;
+  const howtoEl = layout.querySelector<HTMLElement>('.howto')!;
   const lintEl = layout.querySelector<HTMLDivElement>('.lint')!;
   const brushButtons = [...layout.querySelectorAll<HTMLButtonElement>('.brush')];
   const facingEl = layout.querySelector<HTMLElement>('.facing')!;
@@ -85,10 +96,9 @@ export function mountMapEditor(game: Game): void {
   let brush: Brush = '1';
   let facing = 'N';
   let painting = false;
-  // The yellow cursor only exists for keyboard painting. With the mouse there is
-  // nothing under it to aim, so a key that picks a brush must not also paint
-  // whichever square happened to be clicked last.
-  let keyboardCursor = false;
+  // The yellow cursor is always on: typing 1 / 0 / space writes under it, then it
+  // steps right. Clicking a square moves it there.
+  const keyboardCursor = true;
 
   const width = (): number => rows.reduce((max, row) => Math.max(max, row.length), 0);
   const brushChar = (): string => (brush === 'spawn' ? facing : brush);
@@ -159,6 +169,9 @@ export function mountMapEditor(game: Game): void {
     );
 
     lint(errors.length);
+    gridEl
+      .querySelector('.cursor')
+      ?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   }
 
   function lint(wallErrors: number): void {
@@ -193,11 +206,10 @@ export function mountMapEditor(game: Game): void {
 
   function open(): void {
     rows = [...game.level.grid];
-    const spawn = game.level.spawn;
-    cursorX = spawn.x;
-    cursorY = spawn.y;
-    facing = spawn.facing;
-    keyboardCursor = false;
+    facing = game.level.spawn.facing;
+    cursorX = 0;
+    cursorY = 0;
+    howtoEl.innerHTML = HOWTO_SHORT;
     selectBrush(brush);
     terminal.show();
     render();
@@ -222,6 +234,7 @@ export function mountMapEditor(game: Game): void {
   function resize(w: number, h: number): void {
     const cols = Math.min(Math.max(w, 3), MAX_SIDE);
     const height = Math.min(Math.max(h, 3), MAX_SIDE);
+    // The cursor lands next to the player, ready to type.
     rows = Array.from({ length: height }, (_, y) =>
       Array.from({ length: cols }, (_, x) =>
         y === 0 || y === height - 1 || x === 0 || x === cols - 1 ? '1' : '0',
@@ -259,8 +272,8 @@ export function mountMapEditor(game: Game): void {
         return;
       }
       rows = [...parsed.level.grid];
-      cursorX = parsed.level.spawn.x;
-      cursorY = parsed.level.spawn.y;
+      cursorX = 0;
+      cursorY = 0;
       facing = parsed.level.spawn.facing;
       selectBrush(brush);
       render();
@@ -305,28 +318,54 @@ export function mountMapEditor(game: Game): void {
     const move = moves[key];
     if (move) {
       event.preventDefault();
-      if (keyboardCursor) {
-        cursorX = Math.min(Math.max(cursorX + move[0], 0), Math.max(w - 1, 0));
-        cursorY = Math.min(Math.max(cursorY + move[1], 0), rows.length - 1);
-      }
-      keyboardCursor = true;
+      cursorX = Math.min(Math.max(cursorX + move[0], 0), Math.max(w - 1, 0));
+      cursorY = Math.min(Math.max(cursorY + move[1], 0), rows.length - 1);
       render();
       return;
     }
 
-    const picked = BRUSH_KEYS[key];
-    if (picked !== undefined) {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+
+    if (key === 'Backspace' || key === 'Delete') {
       event.preventDefault();
-      selectBrush(picked);
-      if (keyboardCursor) paint(cursorX, cursorY);
+      if (key === 'Backspace') {
+        const back = retreat({ x: cursorX, y: cursorY }, w);
+        cursorX = back.x;
+        cursorY = back.y;
+      }
+      const here = rows[cursorY]?.[cursorX] ?? ' ';
+      if (!SPAWNS.has(here)) setCell(cursorX, cursorY, ' ');
+      else render();
+      return;
+    }
+
+    const typed = BRUSH_KEYS[key];
+    if (typed !== undefined) {
+      event.preventDefault();
+      selectBrush(typed);
+      typeChar(typed);
       return;
     }
     if (key.length === 1 && SPAWNS.has(upper)) {
       event.preventDefault();
       face(upper);
-      if (keyboardCursor) paint(cursorX, cursorY);
+      typeChar(upper);
     }
   });
+
+  /** Writes under the cursor, then steps right, wrapping to the next row. */
+  function typeChar(ch: string): void {
+    const current = rows[cursorY]?.[cursorX] ?? ' ';
+    const onPlayer = SPAWNS.has(current) && !SPAWNS.has(ch);
+    if (!onPlayer && current !== ch) setCell(cursorX, cursorY, ch);
+    const next = advance({ x: cursorX, y: cursorY }, width(), rows.length);
+    cursorX = next.x;
+    cursorY = next.y;
+    render();
+    if (onPlayer) {
+      terminal.setStatus('that square is you — type N E S or W elsewhere to move yourself', 'warn');
+    }
+  }
 
   const cellAt = (x: number, y: number): HTMLElement | null => {
     const el = document.elementFromPoint(x, y) as HTMLElement | null;
@@ -341,7 +380,6 @@ export function mountMapEditor(game: Game): void {
     // Touch captures the pointer to the first square; release it so the drag
     // keeps finding the square under the finger.
     (event.target as Element).releasePointerCapture?.(event.pointerId);
-    keyboardCursor = false;
     cursorX = Number(cell.dataset.x);
     cursorY = Number(cell.dataset.y);
     painting = true;
@@ -375,7 +413,7 @@ export function mountMapEditor(game: Game): void {
         close();
         break;
       case 'new':
-        resize(Number(args[0] ?? 20), Number(args[1] ?? 12));
+        resize(parseSize(args[0], 20, 3, MAX_SIDE), parseSize(args[1], 12, 3, MAX_SIDE));
         break;
       case 'save':
         download();
@@ -384,8 +422,10 @@ export function mountMapEditor(game: Game): void {
         loadFile();
         break;
       case 'help':
+        howtoEl.innerHTML = HOWTO_LONG;
         terminal.setStatus(
-          ':w write (save and play) · :q quit (no save) · :new 20 12 blank map, 20 wide 12 high · ' +
+          `type 1 0 space to write into the map · :w write (save and play) · :q quit (no save) · ` +
+            `:new 40 24 blank map, 40 wide 24 high (max ${MAX_SIDE}) · ` +
             ':save download it as a .cub file · :load open one · Esc does the same as :q',
           'muted',
         );

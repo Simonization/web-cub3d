@@ -1,0 +1,56 @@
+# systemd unit for the bug board API behind play.langerock.xyz/api/*.
+#
+# Install (see "Bug board" in README.md for the whole checklist):
+#   install -m 644 deploy/cub3d-bugs.service /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now cub3d-bugs
+#
+# The key lives in /etc/cub3d-bugs.env (root:root, mode 600), one line:
+#   BUGS_ADMIN_KEY=<output of `npm run bugs -- keygen`>
+# Reports live in /var/lib/cub3d-bugs/bugs.json (StateDirectory below).
+
+[Unit]
+Description=cub3D bug board API (play.langerock.xyz /api/*)
+After=network.target
+
+[Service]
+Type=simple
+# Adjust if `command -v node` says otherwise on the box (needs Node 18+).
+ExecStart=/usr/bin/node /opt/cub3d-bugs/index.mjs
+EnvironmentFile=/etc/cub3d-bugs.env
+Environment=BUGS_HOST=127.0.0.1
+Environment=BUGS_PORT=8787
+Environment=BUGS_DATA=/var/lib/cub3d-bugs/bugs.json
+Environment=NODE_ENV=production
+Restart=on-failure
+RestartSec=3
+
+# No user to create: systemd makes a throwaway one and owns the state dir for it.
+DynamicUser=yes
+StateDirectory=cub3d-bugs
+StateDirectoryMode=0700
+UMask=0077
+
+# Hardening. MemoryDenyWriteExecute is left out on purpose: V8's JIT needs W+X.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+MemoryMax=128M
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

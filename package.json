@@ -8,7 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "assets": "python3 scripts/xpm2png.py"
+    "assets": "python3 scripts/xpm2png.py",
+    "bugs:dev": "node --env-file-if-exists=.env.local server/index.mjs",
+    "bugs": "node scripts/bugs.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.6.1",
